@@ -295,5 +295,28 @@
 </div>
 	<script data-goatcounter="https://aleaiacta9.goatcounter.com/count"
         async src="//gc.zgo.at/count.js"></script>
+		<script>
+  const pageLoadStart = Date.now();
+  function sendPageTime() {
+    if (window.goatcounter && window.goatcounter.count) {
+      const totalSeconds = Math.round((Date.now() - pageLoadStart) / 1000);
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      const timeString = minutes > 0 ? minutes + 'm ' + seconds + 's' : seconds + 's';
+
+      window.goatcounter.count({
+        path: 'time-on-page',
+        title: timeString,
+        event: true
+      });
+    }
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      sendPageTime();
+    }
+  });
+  window.addEventListener('beforeunload', sendPageTime);
+</script>
 </body>
 </html>

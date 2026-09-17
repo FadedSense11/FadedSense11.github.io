@@ -295,3 +295,176 @@
 </div>
 	<script data-goatcounter="https://aleaiacta9.goatcounter.com/count"
         async src="//gc.zgo.at/count.js"></script>
+<script>
+(function () {
+    var activeStart = null;
+    var totalVisibleTime = 0;
+    var maxScroll = 0;
+    var exitTimer = null;
+    var sent = false;
+    var EXIT_DELAY = 30000;
+
+    function updateScroll() {
+        var doc = document.documentElement;
+        var body = document.body;
+
+        var scrollTop = window.scrollY || window.pageYOffset;
+        var viewport = window.innerHeight;
+
+        var height = Math.max(
+            doc.scrollHeight,
+            body ? body.scrollHeight : 0
+        );
+
+        var denominator = height - viewport;
+
+        if (denominator <= 0) {
+            maxScroll = 100;
+            return;
+        }
+
+        var percent = Math.round(
+            (scrollTop / denominator) * 100
+        );
+
+        if (percent > maxScroll) {
+            maxScroll = Math.min(percent, 100);
+        }
+    }
+
+    function startVisibleTime() {
+        if (activeStart === null) {
+            activeStart = Date.now();
+        }
+
+        updateScroll();
+    }
+
+    function pauseVisibleTime() {
+        if (activeStart !== null) {
+            totalVisibleTime += Date.now() - activeStart;
+            activeStart = null;
+        }
+
+        updateScroll();
+    }
+
+    function getVisibleSeconds() {
+        var time = totalVisibleTime;
+
+        if (activeStart !== null) {
+            time += Date.now() - activeStart;
+        }
+
+        return Math.round(time / 1000);
+    }
+
+    function sendExitEvent() {
+        if (sent) return;
+
+        sent = true;
+        updateScroll();
+
+        var seconds = getVisibleSeconds();
+
+        var timeBucket;
+
+        if (seconds < 10) {
+            timeBucket = '0-9s';
+        } else if (seconds < 30) {
+            timeBucket = '10-29s';
+        } else if (seconds < 60) {
+            timeBucket = '30-59s';
+        } else if (seconds < 120) {
+            timeBucket = '1-2m';
+        } else if (seconds < 300) {
+            timeBucket = '2-5m';
+        } else if (seconds < 600) {
+            timeBucket = '5-10m';
+        } else {
+            timeBucket = '10m+';
+        }
+
+        function send() {
+            if (!window.goatcounter ||
+                !window.goatcounter.count) {
+                return false;
+            }
+
+            window.goatcounter.count({
+                path:
+                    'reading-' +
+                    timeBucket +
+                    '-scroll-' +
+                    maxScroll,
+                event: true
+            });
+
+            return true;
+        }
+
+        // GoatCounter может загружаться async.
+        if (send()) return;
+
+        var attempts = 0;
+
+        var timer = setInterval(function () {
+            attempts++;
+
+            if (send() || attempts >= 50) {
+                clearInterval(timer);
+            }
+        }, 100);
+    }
+
+    function becameHidden() {
+        pauseVisibleTime();
+		
+        exitTimer = setTimeout(function () {
+            if (document.visibilityState === 'hidden') {
+                sendExitEvent();
+            }
+        }, EXIT_DELAY);
+    }
+
+    function becameVisible() {
+        if (exitTimer !== null) {
+            clearTimeout(exitTimer);
+            exitTimer = null;
+        }
+
+        if (!sent) {
+            startVisibleTime();
+        }
+    }
+	
+    if (document.visibilityState === 'visible') {
+        startVisibleTime();
+    }
+
+    document.addEventListener(
+        'visibilitychange',
+        function () {
+            if (document.visibilityState === 'hidden') {
+                becameHidden();
+            } else {
+                becameVisible();
+            }
+        }
+    );
+	
+    window.addEventListener('pagehide', function () {
+        if (!sent) {
+            pauseVisibleTime();
+            sendExitEvent();
+        }
+    });
+
+    window.addEventListener(
+        'scroll',
+        updateScroll,
+        { passive: true }
+    );
+
+})();
+</script>

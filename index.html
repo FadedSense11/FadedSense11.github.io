@@ -295,231 +295,109 @@
 </div>
 	<script data-goatcounter="https://aleaiacta9.goatcounter.com/count"
         async src="//gc.zgo.at/count.js"></script>
-```html
+	
 <script>
 (function () {
-    var activeStart = null;
-    var totalVisibleTime = 0;
-    var maxScroll = 0;
-    var exitTimer = null;
-    var sent = false;
 
-    var EXIT_DELAY = 30000;
+    var visibleStart = null;
+    var totalSeconds = 0;
+    var lastSent = 0;
+    var CHECK_INTERVAL = 5000;
 
-    function updateScroll() {
-        var doc = document.documentElement;
-        var body = document.body;
+    function startTimer() {
 
-        var scrollTop = window.scrollY || window.pageYOffset || 0;
-        var viewport = window.innerHeight || 0;
-
-        var height = Math.max(
-            doc.scrollHeight || 0,
-            doc.offsetHeight || 0,
-            body ? body.scrollHeight : 0,
-            body ? body.offsetHeight : 0
-        );
-
-        var denominator = height - viewport;
-
-        if (denominator <= 0) {
-            maxScroll = 100;
-            return;
+        if (visibleStart === null) {
+            visibleStart = Date.now();
         }
 
-        var percent = Math.round(
-            (scrollTop / denominator) * 100
-        );
-
-        if (percent > maxScroll) {
-            maxScroll = Math.min(percent, 100);
-        }
     }
 
-    function startVisibleTime() {
-        if (activeStart === null) {
-            activeStart = Date.now();
+    function pauseTimer() {
+
+        if (visibleStart !== null) {
+
+            totalSeconds += Math.floor(
+                (Date.now() - visibleStart) / 1000
+            );
+
+            visibleStart = null;
         }
 
-        updateScroll();
     }
 
-    function pauseVisibleTime() {
-        if (activeStart !== null) {
-            totalVisibleTime += Date.now() - activeStart;
-            activeStart = null;
+    function getSeconds() {
+
+        var seconds = totalSeconds;
+
+        if (visibleStart !== null) {
+
+            seconds += Math.floor(
+                (Date.now() - visibleStart) / 1000
+            );
+
         }
 
-        updateScroll();
+        return seconds;
     }
 
-    function getVisibleSeconds() {
-        var time = totalVisibleTime;
-
-        if (activeStart !== null) {
-            time += Date.now() - activeStart;
-        }
-
-        return Math.round(time / 1000);
-    }
-
-    function getTimeBucket(seconds) {
-        if (seconds < 10) {
-            return '0-9s';
-        }
-
-        if (seconds < 30) {
-            return '10-29s';
-        }
-
-        if (seconds < 60) {
-            return '30-59s';
-        }
-
-        if (seconds < 120) {
-            return '1-2m';
-        }
-
-        if (seconds < 300) {
-            return '2-5m';
-        }
-
-        if (seconds < 600) {
-            return '5-10m';
-        }
-
-        return '10m+';
-    }
-
-    function sendGoatCounterEvent() {
-        if (sent) {
-            return;
-        }
-
-        sent = true;
-
-        updateScroll();
-
-        var seconds = getVisibleSeconds();
-        var timeBucket = getTimeBucket(seconds);
-
-        var path =
-            'reading-' +
-            timeBucket +
-            '-scroll-' +
-            maxScroll;
+    function sendEvent(seconds) {
 
         if (
-            window.goatcounter &&
-            typeof window.goatcounter.count === 'function'
+            !window.goatcounter ||
+            typeof window.goatcounter.count !== 'function'
         ) {
-            try {
-                window.goatcounter.count({
-                    path: path,
-                    event: true
-                });
-
-                return;
-            } catch (e) {
-				
-            }
-        }
-
-        var scripts = document.getElementsByTagName('script');
-        var goatcounterUrl = null;
-
-        for (var i = 0; i < scripts.length; i++) {
-            var url = scripts[i].getAttribute('data-goatcounter');
-
-            if (url) {
-                goatcounterUrl = url;
-                break;
-            }
-        }
-
-        if (!goatcounterUrl) {
             return;
         }
 
-        var params = new URLSearchParams();
+        window.goatcounter.count({
+            path: 'reading-' + seconds + 's',
+            event: true
+        });
 
-        params.append('p', path);
-        params.append('e', 'true');
-
-        try {
-            if (navigator.sendBeacon) {
-                navigator.sendBeacon(
-                    goatcounterUrl,
-                    params
-                );
-            }
-        } catch (e) {
-        }
+        lastSent = seconds;
     }
+	
+    function checkTime() {
 
-    function becameHidden() {
-        pauseVisibleTime();
-
-        if (exitTimer !== null) {
-            clearTimeout(exitTimer);
+        if (document.visibilityState !== 'visible') {
+            return;
         }
 
-        exitTimer = setTimeout(function () {
-            if (
-                document.visibilityState === 'hidden' &&
-                !sent
-            ) {
-                sendGoatCounterEvent();
-            }
-        }, EXIT_DELAY);
-    }
+        var seconds = getSeconds();
 
-    function becameVisible() {
-        if (exitTimer !== null) {
-            clearTimeout(exitTimer);
-            exitTimer = null;
+        var milestone =
+            Math.floor(seconds / 30) * 30;
+
+        if (
+            milestone >= 30 &&
+            milestone > lastSent
+        ) {
+            sendEvent(milestone);
         }
 
-        if (!sent) {
-            startVisibleTime();
-        }
     }
 
     if (document.visibilityState === 'visible') {
-        startVisibleTime();
+        startTimer();
     }
-
+	
     document.addEventListener(
         'visibilitychange',
         function () {
-            if (document.visibilityState === 'hidden') {
-                becameHidden();
+
+            if (document.visibilityState === 'visible') {
+                startTimer();
             } else {
-                becameVisible();
-            }
-        }
-    );
-
-    window.addEventListener(
-        'pagehide',
-        function () {
-            if (sent) {
-                return;
+                pauseTimer();
             }
 
-            pauseVisibleTime();
-            sendGoatCounterEvent();
         }
     );
 
-    window.addEventListener(
-        'scroll',
-        updateScroll,
-        {
-            passive: true
-        }
+    setInterval(
+        checkTime,
+        CHECK_INTERVAL
     );
-
 })();
 </script>
-```
+
